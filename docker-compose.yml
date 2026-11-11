@@ -1,0 +1,23 @@
+name: companheiro-foco
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: focus-mosquitto
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # non-root
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8883:8883"                       # localhost only
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - ./certs/out/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./certs/out/server.crt:/mosquitto/certs/server.crt:ro
+      - ./certs/out/server.key:/mosquitto/certs/server.key:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [focus-net]
+
+networks:
+  focus-net:
+    name: focus-net

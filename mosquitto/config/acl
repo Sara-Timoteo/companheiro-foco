@@ -1,0 +1,12 @@
+# Least privilege: each service may only touch its own topics.
+user sensor
+topic write focus/noise
+topic write focus/timer
+topic write focus/alert
+topic read  focus/control
+
+user dashboard
+topic read  focus/noise
+topic read  focus/timer
+topic read  focus/alert
+topic write focus/control
