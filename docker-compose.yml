@@ -36,6 +36,21 @@ services:
       - ./certs/out/sensor.crt:/certs/client.crt:ro
       - ./certs/out/sensor.key:/certs/client.key:ro
 
+  dashboard:
+    <<: *hardening
+    build: ./dashboard
+    container_name: focus-dashboard
+    depends_on: [mosquitto]
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8088}:8080"                       # localhost only
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "8883"
+    volumes:
+      - ./certs/out/ca.crt:/certs/ca.crt:ro
+      - ./certs/out/dashboard.crt:/certs/client.crt:ro
+      - ./certs/out/dashboard.key:/certs/client.key:ro
+
 networks:
   focus-net:
     name: focus-net

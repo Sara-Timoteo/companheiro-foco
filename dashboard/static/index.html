@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Focus Companion</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#focus">Skip to focus block</a>
+  <header>
+    <h1>Focus Companion</h1>
+    <p id="link" class="pill" data-ok="false"><span class="shape" aria-hidden="true"></span><span id="link-text">Connecting…</span></p>
+    <p id="demo-badge" class="pill demo" hidden></p>
+  </header>
+
+  <main>
+    <section id="focus" aria-labelledby="focus-h" class="card focus">
+      <h2 id="focus-h">Focus block</h2>
+      <div class="lamp-wrap">
+        <div class="lamp" id="lamp" role="img" aria-label="Focus light: no block running">
+          <div class="lamp-fill" id="lamp-fill"></div>
+        </div>
+        <div class="readout">
+          <p class="time" id="time">--:--</p>
+          <p class="time-sub" id="time-sub">No block running</p>
+          <p class="task" id="task"></p>
+        </div>
+      </div>
+
+      <form id="start-form" class="start">
+        <label for="label">What will you focus on?</label>
+        <input id="label" name="label" maxlength="80" placeholder="e.g. Write the monthly report" autocomplete="off">
+        <fieldset>
+          <legend>How long?</legend>
+          <div class="presets">
+            <input type="radio" name="minutes" id="m15" value="15"><label for="m15">15 min</label>
+            <input type="radio" name="minutes" id="m25" value="25" checked><label for="m25">25 min</label>
+            <input type="radio" name="minutes" id="m45" value="45"><label for="m45">45 min</label>
+          </div>
+        </fieldset>
+        <div class="buttons">
+          <button type="submit" id="btn-start" class="primary">▶ Start</button>
+          <button type="button" id="btn-pause">❚❚ Pause</button>
+          <button type="button" id="btn-resume">▶ Resume</button>
+          <button type="button" id="btn-stop">■ Stop</button>
+        </div>
+      </form>
+    </section>
+
+    <section aria-labelledby="cues-h" class="card cues">
+      <h2 id="cues-h">Gentle cues</h2>
+      <p class="hint" id="no-cues">Nothing needs your attention.</p>
+      <ul id="alerts" class="alerts" aria-live="polite" aria-relevant="additions"></ul>
+    </section>
+
+    <section aria-labelledby="noise-h" class="card noise">
+      <h2 id="noise-h">Sound around you</h2>
+      <p class="noise-status" id="noise-status" data-loud="false">
+        <span class="shape" aria-hidden="true"></span><span id="noise-word">Calm</span>
+        <span class="db"><span id="noise-db">--</span> dB</span>
+      </p>
+      <div class="meter" role="meter" id="meter" aria-valuemin="30" aria-valuemax="100" aria-valuenow="40" aria-label="Sound level">
+        <div class="meter-bar" id="meter-bar"></div>
+        <div class="meter-limit" id="meter-limit" title="Your limit"></div>
+      </div>
+      <canvas id="spark" width="600" height="90" aria-hidden="true"></canvas>
+      <p class="hint">Last 2 minutes · dashed line = your limit · kept only in this page, never saved</p>
+    </section>
+
+    <section aria-labelledby="set-h" class="card settings">
+      <h2 id="set-h">Your limits</h2>
+      <form id="settings-form">
+        <label for="threshold">Too noisy above <output id="threshold-out" for="threshold">65</output> dB</label>
+        <input type="range" id="threshold" min="40" max="90" step="1" value="65">
+
+        <label for="warning">Transition cue</label>
+        <select id="warning">
+          <option value="0">Off</option>
+          <option value="2">2 minutes before the end</option>
+          <option value="5" selected>5 minutes before the end</option>
+          <option value="10">10 minutes before the end</option>
+        </select>
+
+        <label for="cooldown">Remind me about noise at most every</label>
+        <select id="cooldown">
+          <option value="60">1 minute</option>
+          <option value="90" selected>1.5 minutes</option>
+          <option value="300">5 minutes</option>
+          <option value="900">15 minutes</option>
+        </select>
+
+        <div class="check">
+          <input type="checkbox" id="noise-alerts" checked>
+          <label for="noise-alerts">Noise cues on</label>
+        </div>
+        <button type="submit" class="primary">Save my limits</button>
+        <p class="hint" id="settings-saved" role="status"></p>
+      </form>
+    </section>
+
+    <section aria-labelledby="rec-h" class="card record">
+      <h2 id="rec-h">My focus record</h2>
+      <div class="check">
+        <input type="checkbox" id="rec-on">
+        <label for="rec-on">Keep a record of my focus blocks</label>
+      </div>
+      <p class="hint">Off by default. Only a summary of each block is kept, in this browser on this computer. Nothing is sent anywhere.</p>
+      <label for="rec-days">Keep it for</label>
+      <select id="rec-days">
+        <option value="7">7 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+      </select>
+      <div id="rec-body">
+        <h3>Last 7 days</h3>
+        <ul class="stats" id="rec-stats"></ul>
+        <div class="table-wrap">
+        <table id="rec-table">
+          <caption class="sr-only">Recent focus blocks</caption>
+          <thead><tr><th scope="col">When</th><th scope="col">Task</th><th scope="col">Focused</th><th scope="col">Result</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+        <p class="hint" id="rec-empty">No blocks recorded yet.</p>
+      </div>
+      <div class="buttons">
+        <button type="button" id="rec-export">Export (CSV)</button>
+        <button type="button" id="rec-delete">Delete everything</button>
+      </div>
+      <p class="hint" id="rec-msg" role="status"></p>
+    </section>
+
+    <details class="card demo-tools">
+      <summary>Demo tools (simulation)</summary>
+      <p class="hint">The noise sensor is simulated in this prototype.</p>
+      <button type="button" id="btn-spike">Simulate a noisy neighbour (30 s)</button>
+    </details>
+  </main>
+
+  <footer>
+    <p><strong>Private by design:</strong> no audio is recorded, nothing leaves this computer,
+    and the device link is encrypted and mutually authenticated. Your focus record stays off unless you switch it on.</p>
+  </footer>
+</body>
+</html>
