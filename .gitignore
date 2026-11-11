@@ -1,0 +1,15 @@
+# Secrets: keys and certificates NEVER go into Git
+certs/out/
+*.key
+*.pem
+*.crt
+*.csr
+*.srl
+.env
+# Network captures (share separately)
+*.pcap
+*.pcapng
+# Python
+__pycache__/
+*.pyc
+.venv/
