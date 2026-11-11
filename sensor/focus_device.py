@@ -7,6 +7,7 @@ plus a focus-timer task. Commands arrive through a queue from the MQTT thread.
 Privacy: only aggregated noise levels (dB) leave the device. No audio is recorded,
 stored or transmitted. The person sets every threshold.
 """
+import ctypes
 import json
 import logging
 import os
@@ -94,6 +95,63 @@ class Analyzer:
                 self.loud = False
                 events.append("noise_ok")
         return events
+
+
+class _NAState(ctypes.Structure):
+    # mirrors noise_analyzer_t in firmware/common/noise_analyzer.h
+    _fields_ = [("threshold_cdb", ctypes.c_int32), ("sustain_ms", ctypes.c_uint32),
+                ("avg_cdb", ctypes.c_int32), ("above_since_ms", ctypes.c_uint32),
+                ("has_avg", ctypes.c_uint8), ("above", ctypes.c_uint8), ("loud", ctypes.c_uint8)]
+
+
+class CAnalyzer:
+    """Same analyzer, running the C code meant for the microcontroller."""
+
+    EVENTS = {1: "noise_high", 2: "noise_ok"}
+
+    def __init__(self, settings, lib):
+        self.s = settings
+        self.lib = lib
+        self.state = _NAState()
+        lib.na_init(ctypes.byref(self.state), self._threshold(), self._sustain())
+
+    def _threshold(self):
+        return round(self.s.noise_threshold_db * 100)
+
+    def _sustain(self):
+        return int(self.s.noise_sustain_s * 1000)
+
+    def update(self, db, now):
+        self.lib.na_set_limits(ctypes.byref(self.state), self._threshold(), self._sustain())
+        event = self.lib.na_update(ctypes.byref(self.state), round(db * 100),
+                                   int(now * 1000) & 0xFFFFFFFF)
+        return [self.EVENTS[event]] if event in self.EVENTS else []
+
+    @property
+    def avg(self):
+        return self.state.avg_cdb / 100 if self.state.has_avg else None
+
+    @property
+    def loud(self):
+        return bool(self.state.loud)
+
+
+def make_analyzer(settings):
+    """Use the C analyzer when the library is there; fall back to Python."""
+    path = os.getenv("NOISE_LIB", "/app/libnoise_analyzer.so")
+    if os.getenv("USE_C_ANALYZER", "1") == "1":
+        try:
+            lib = ctypes.CDLL(path)
+            ptr = ctypes.POINTER(_NAState)
+            lib.na_init.argtypes = [ptr, ctypes.c_int32, ctypes.c_uint32]
+            lib.na_set_limits.argtypes = [ptr, ctypes.c_int32, ctypes.c_uint32]
+            lib.na_update.argtypes = [ptr, ctypes.c_int32, ctypes.c_uint32]
+            lib.na_update.restype = ctypes.c_int
+            log.info("Noise analyzer: C library %s", path)
+            return CAnalyzer(settings, lib)
+        except OSError as exc:
+            log.warning("C analyzer not available (%s); using the Python one", exc)
+    return Analyzer(settings)
 
 
 class FocusTimer:
@@ -187,7 +245,7 @@ class Device:
         self.publish = publish
         self.settings = Settings()
         self.noise = NoiseSource(rng=rng)
-        self.analyzer = Analyzer(self.settings)
+        self.analyzer = make_analyzer(self.settings)
         self.timer = FocusTimer(time_scale)
         self.gatekeeper = Gatekeeper(self.settings, publish)
 

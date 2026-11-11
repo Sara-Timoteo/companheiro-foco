@@ -24,7 +24,10 @@ services:
 
   sensor:
     <<: *hardening
-    build: ./sensor
+    build:
+      context: ./sensor
+      additional_contexts:
+        firmware: ./firmware                         # C noise analyzer, compiled and tested in the image
     container_name: focus-sensor
     depends_on: [mosquitto]
     environment:

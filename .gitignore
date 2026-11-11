@@ -13,3 +13,6 @@ certs/out/
 __pycache__/
 *.pyc
 .venv/
+# C build output
+firmware/common/libnoise_analyzer.so
+firmware/common/tests/test_noise_analyzer
