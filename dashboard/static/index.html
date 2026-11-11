@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Focus Companion</title>
+  <meta name="theme-color" content="#1f5f8b">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
@@ -15,6 +18,26 @@
     <p id="demo-badge" class="pill demo" hidden></p>
   </header>
 
+  <section class="prefs" aria-label="How this page looks and sounds">
+    <fieldset>
+      <legend>View</legend>
+      <div class="presets">
+        <input type="radio" name="view" id="v-standard" value="standard" checked><label for="v-standard">Standard</label>
+        <input type="radio" name="view" id="v-calm" value="calm"><label for="v-calm">Calm</label>
+        <input type="radio" name="view" id="v-text" value="text"><label for="v-text">Text only</label>
+      </div>
+    </fieldset>
+    <div class="field">
+      <label for="sound">Cues out loud</label>
+      <select id="sound">
+        <option value="off">Off</option>
+        <option value="chime">Soft chime</option>
+        <option value="voice">Read aloud</option>
+      </select>
+    </div>
+    <button type="button" id="btn-read">Read status aloud</button>
+  </section>
+
   <main>
     <section id="focus" aria-labelledby="focus-h" class="card focus">
       <h2 id="focus-h">Focus block</h2>
@@ -22,6 +45,7 @@
         <div class="lamp" id="lamp" role="img" aria-label="Focus light: no block running">
           <div class="lamp-fill" id="lamp-fill"></div>
         </div>
+        <p class="text-summary" id="text-summary">No focus block running.</p>
         <div class="readout">
           <p class="time" id="time">--:--</p>
           <p class="time-sub" id="time-sub">No block running</p>
@@ -66,7 +90,7 @@
         <div class="meter-limit" id="meter-limit" title="Your limit"></div>
       </div>
       <canvas id="spark" width="600" height="90" aria-hidden="true"></canvas>
-      <p class="hint">Last 2 minutes · dashed line = your limit · kept only in this page, never saved</p>
+      <p class="hint spark-hint">Last 2 minutes · dashed line = your limit · kept only in this page, never saved</p>
     </section>
 
     <section aria-labelledby="set-h" class="card settings">
@@ -140,6 +164,7 @@
   </main>
 
   <footer>
+    <p class="calm-note">Calm view hides the extra panels. Switch to Standard to change your limits or see your record.</p>
     <p><strong>Private by design:</strong> no audio is recorded, nothing leaves this computer,
     and the device link is encrypted and mutually authenticated. Your focus record stays off unless you switch it on.</p>
   </footer>

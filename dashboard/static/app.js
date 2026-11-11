@@ -7,6 +7,8 @@ const noiseHistory = [];   // in-memory only, cleared on reload
 let threshold = 65;
 let settingsLoaded = false;
 let timerState = "idle";
+let lastTimer = null;
+let lastNoise = null;
 
 async function send(command) {
   try {
@@ -29,6 +31,7 @@ function fmt(seconds) {
 // focus block
 function renderTimer(t) {
   trackSession(t);
+  lastTimer = t;
   timerState = t.state;
   const lamp = $("lamp");
   const pct = t.state === "idle" ? 0 : Math.round(t.fraction_remaining * 100);
@@ -55,6 +58,7 @@ function renderTimer(t) {
   $("demo-badge").textContent = `Demo mode: time runs ${t.time_scale}× faster`;
 
   threshold = t.settings.noise_threshold_db;
+  $("text-summary").textContent = statusText();
   if (!settingsLoaded) { loadSettings(t.settings); settingsLoaded = true; }
 }
 
@@ -96,6 +100,7 @@ function showAlert(a) {
   // "calmer" fades on its own; everything else stays until dismissed
   if (a.type === "noise_ok") setTimeout(() => { li.remove(); updateEmpty(); }, 10000);
   updateEmpty();
+  if (a.type !== "noise_ok" && a.type !== "error") cueOutLoud(a);
 }
 function updateEmpty() { $("no-cues").hidden = $("alerts").children.length > 0; }
 
@@ -103,6 +108,7 @@ function updateEmpty() { $("no-cues").hidden = $("alerts").children.length > 0; 
 function pctOf(db) { return Math.min(100, Math.max(0, ((db - 30) / 70) * 100)); }
 
 function renderNoise(n) {
+  lastNoise = n;
   threshold = n.threshold_db;
   $("noise-db").textContent = n.avg_db.toFixed(0);
   $("noise-word").textContent = n.loud ? "Noisy" : "Calm";
@@ -112,6 +118,7 @@ function renderNoise(n) {
   $("meter").setAttribute("aria-valuetext", `${n.avg_db.toFixed(0)} decibels, ${n.loud ? "noisy" : "calm"}`);
   $("meter-bar").style.width = `${pctOf(n.avg_db)}%`;
   $("meter-limit").style.left = `${pctOf(n.threshold_db)}%`;
+  $("text-summary").textContent = statusText();
   noiseHistory.push(n.avg_db);
   if (noiseHistory.length > HISTORY_SECONDS) noiseHistory.shift();
   drawSpark();
@@ -286,6 +293,86 @@ $("rec-export").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 saveRecord();
+
+// view and sound preferences (only how the page looks, kept in this browser)
+const PREFS_KEY = "focus-companion.prefs";
+let prefs = { view: "standard", sound: "off" };
+try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY)) }; } catch { /* defaults */ }
+
+function applyPrefs() {
+  document.body.dataset.view = prefs.view;
+  const radio = document.querySelector(`input[name="view"][value="${prefs.view}"]`);
+  if (radio) radio.checked = true;
+  $("sound").value = prefs.sound;
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* not saved */ }
+}
+document.querySelectorAll('input[name="view"]').forEach((r) =>
+  r.addEventListener("change", () => { prefs.view = r.value; applyPrefs(); }));
+$("sound").addEventListener("change", (e) => {
+  prefs.sound = e.target.value;
+  applyPrefs();
+  if (prefs.sound === "chime") chime("transition");
+  if (prefs.sound === "voice") speak("Cues will be read aloud.");
+});
+$("btn-read").addEventListener("click", () => speak(statusText()));
+applyPrefs();
+
+function statusText() {
+  const parts = [];
+  const t = lastTimer;
+  if (!t || t.state === "idle") parts.push("No focus block running.");
+  else if (t.state === "finished") parts.push("Block finished. Time for a break.");
+  else {
+    const left = Math.ceil(t.remaining_s / 60);
+    const total = Math.round(t.duration_s / 60);
+    const task = t.label ? ` on ${t.label}` : "";
+    parts.push(t.state === "paused" ? `Paused${task}. ${left} of ${total} minutes left.`
+                                    : `Focusing${task}. ${left} of ${total} minutes left.`);
+  }
+  if (lastNoise) {
+    parts.push(`The room is ${lastNoise.loud ? "noisy" : "calm"}, about ${Math.round(lastNoise.avg_db)} decibels. ` +
+               `Your limit is ${Math.round(lastNoise.threshold_db)}.`);
+  }
+  return parts.join(" ");
+}
+
+let audioCtx = null;
+function chime(type) {
+  try {
+    audioCtx = audioCtx || new AudioContext();
+    const notes = type === "noise_high" ? [440, 392] : type === "session_end" ? [392, 523] : [523, 659];
+    notes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const start = audioCtx.currentTime + i * 0.35;
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.08, start + 0.05);   // quiet on purpose
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.6);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(start);
+      osc.stop(start + 0.65);
+    });
+  } catch { /* no audio available */ }
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en";
+  u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
+
+function cueOutLoud(a) {
+  if (prefs.sound === "chime") chime(a.type);
+  if (prefs.sound === "voice") speak(`${TITLES[a.type] || ""}. ${a.message}`);
+}
+
+// installable app (PWA); live data is never cached
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
 // live link
 function setLink(ok) {

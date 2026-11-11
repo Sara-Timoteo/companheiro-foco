@@ -19,10 +19,13 @@ log = logging.getLogger("focus-dashboard")
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_FILES = {"/": "index.html", "/index.html": "index.html",
-                "/app.js": "app.js", "/style.css": "style.css"}
+                "/app.js": "app.js", "/style.css": "style.css", "/sw.js": "sw.js",
+                "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg"}
 CONTENT_TYPES = {".html": "text/html; charset=utf-8",
                  ".js": "text/javascript; charset=utf-8",
-                 ".css": "text/css; charset=utf-8"}
+                 ".css": "text/css; charset=utf-8",
+                 ".webmanifest": "application/manifest+json",
+                 ".svg": "image/svg+xml"}
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; "
                                "base-uri 'none'; form-action 'self'",
