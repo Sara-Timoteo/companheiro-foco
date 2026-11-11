@@ -71,11 +71,15 @@ $("btn-pause").addEventListener("click", () => send({ cmd: "pause" }));
 $("btn-resume").addEventListener("click", () => send({ cmd: "resume" }));
 $("btn-stop").addEventListener("click", () => send({ cmd: "stop" }));
 $("btn-spike").addEventListener("click", () => send({ cmd: "simulate", event: "noise_spike", seconds: 30 }));
+$("btn-slam").addEventListener("click", () => send({ cmd: "simulate", event: "door_slam" }));
+$("btn-skip").addEventListener("click", () => send({ cmd: "simulate", event: "skip_to_transition" }));
+$("btn-long").addEventListener("click", () => send({ cmd: "simulate", event: "long_focus" }));
 
 // gentle cues
-const ICONS = { noise_high: "〰", noise_ok: "○", transition: "⏳", session_end: "✓", error: "!" };
+const ICONS = { noise_high: "〰", noise_ok: "○", transition: "⏳", session_end: "✓",
+                body_break: "♡", error: "!" };
 const TITLES = { noise_high: "Noise", noise_ok: "Calmer", transition: "Transition coming",
-                 session_end: "Block done", error: "Connection" };
+                 session_end: "Block done", body_break: "Body break", error: "Connection" };
 
 function showAlert(a) {
   if (a.type === "noise_high" && current) current.noise_cues += 1;
@@ -96,6 +100,12 @@ function showAlert(a) {
   ok.setAttribute("aria-label", `Dismiss: ${TITLES[a.type] || "note"}`);
   ok.addEventListener("click", () => { li.remove(); updateEmpty(); });
   li.append(icon, p, ok);
+  if (a.type === "body_break") {
+    const later = document.createElement("button");
+    later.type = "button"; later.textContent = "Later (10 min)";
+    later.addEventListener("click", () => { send({ cmd: "snooze_break" }); li.remove(); updateEmpty(); });
+    li.append(later);
+  }
   $("alerts").prepend(li);
   // "calmer" fades on its own; everything else stays until dismissed
   if (a.type === "noise_ok") setTimeout(() => { li.remove(); updateEmpty(); }, 10000);
@@ -147,6 +157,7 @@ function loadSettings(s) {
   $("threshold-out").value = Math.round(s.noise_threshold_db);
   $("warning").value = String(s.transition_warning_min);
   $("cooldown").value = String(s.alert_cooldown_s);
+  $("break").value = String(s.break_reminder_min ?? 50);
   $("noise-alerts").checked = s.noise_alerts;
 }
 $("threshold").addEventListener("input", (e) => { $("threshold-out").value = e.target.value; });
@@ -157,6 +168,7 @@ $("settings-form").addEventListener("submit", (e) => {
     noise_threshold_db: Number($("threshold").value),
     transition_warning_min: Number($("warning").value),
     alert_cooldown_s: Number($("cooldown").value),
+    break_reminder_min: Number($("break").value),
     noise_alerts: $("noise-alerts").checked,
   });
   $("settings-saved").textContent = "Saved on this device.";

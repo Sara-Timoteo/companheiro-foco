@@ -29,6 +29,7 @@ class Settings:
     noise_alerts: bool = True          # the person can switch noise alerts off
     alert_cooldown_s: int = 90         # never nag: at most one noise alert per cooldown
     transition_warning_min: int = 5    # "X minutes left" cue (0 = off)
+    break_reminder_min: int = 50       # body break after this much focus in a row (0 = off)
 
 
 LIMITS = {
@@ -36,7 +37,11 @@ LIMITS = {
     "noise_sustain_s": (2, 60),
     "alert_cooldown_s": (10, 900),
     "transition_warning_min": (0, 30),
+    "break_reminder_min": (0, 180),
 }
+
+BREAK_RESET_S = 5 * 60   # this long without a running block counts as a real break
+SNOOZE_S = 10 * 60
 
 
 class NoiseSource:
@@ -47,6 +52,7 @@ class NoiseSource:
         self.rng = rng or random.Random()
         self.spike_until = 0.0
         self.spike_db = 72.0
+        self.bang_pending = False
 
     def spike(self, now, seconds=30, db=72.0):
         self.spike_until = now + seconds
@@ -55,8 +61,9 @@ class NoiseSource:
     def sample(self, now):
         target = self.spike_db if now < self.spike_until else self.base_db
         level = target + self.rng.gauss(0, 2.0)
-        if self.rng.random() < 0.02:  # occasional short bang (door, dog, dropped mug)
-            level = max(level, 78 + self.rng.gauss(0, 3))
+        if self.bang_pending or self.rng.random() < 0.02:  # short bang (door, dog, dropped mug)
+            level = max(level, 80 + self.rng.gauss(0, 2))
+            self.bang_pending = False
         return round(clamp(level, 25, 100), 1)
 
 
@@ -99,6 +106,9 @@ class FocusTimer:
         self.duration_s = 0
         self.remaining_s = 0.0
         self.warned = False
+        self.streak_s = 0.0       # focus time in a row, across blocks
+        self.rest_s = 0.0
+        self.break_due_s = None
 
     def start(self, minutes, label):
         self.state, self.label = "running", label
@@ -107,10 +117,23 @@ class FocusTimer:
         self.warned = False
 
     def tick(self, dt, settings):
+        step = dt * self.time_scale
         if self.state != "running":
+            self.rest_s += step
+            if self.rest_s >= BREAK_RESET_S:
+                self.streak_s, self.break_due_s = 0.0, None
             return []
-        self.remaining_s = max(0.0, self.remaining_s - dt * self.time_scale)
+        self.rest_s = 0.0
+        self.streak_s += step
+        self.remaining_s = max(0.0, self.remaining_s - step)
         events = []
+        interval = settings.break_reminder_min * 60
+        if interval > 0:
+            if self.break_due_s is None:
+                self.break_due_s = interval
+            if self.streak_s >= self.break_due_s:
+                self.break_due_s = self.streak_s + interval
+                events.append("body_break")
         warn_s = settings.transition_warning_min * 60
         if (not self.warned and warn_s > 0 and self.duration_s > warn_s
                 and 0 < self.remaining_s <= warn_s):
@@ -127,6 +150,8 @@ MESSAGES = {
     "noise_ok": "Calmer now.",
     "transition": "{minutes} minutes left. A good moment to look for a stopping point.",
     "session_end": "Focus block done. Take a short break before the next thing.",
+    "body_break": "You've been focusing for {focus_min} minutes in a row. "
+                  "Maybe water, a stretch or the bathroom?",
 }
 
 
@@ -187,8 +212,21 @@ class Device:
                         setattr(self.settings, key, cast(clamp(float(cmd[key]), low, high)))
                 if isinstance(cmd.get("noise_alerts"), bool):
                     self.settings.noise_alerts = cmd["noise_alerts"]
+                self.timer.break_due_s = None
+            elif kind == "snooze_break":
+                self.timer.break_due_s = self.timer.streak_s + SNOOZE_S
             elif kind == "simulate" and cmd.get("event") == "noise_spike":
                 self.noise.spike(now, seconds=clamp(int(cmd.get("seconds", 30)), 1, 300))
+            elif kind == "simulate" and cmd.get("event") == "door_slam":
+                self.noise.bang_pending = True
+            elif kind == "simulate" and cmd.get("event") == "skip_to_transition":
+                warn_s = self.settings.transition_warning_min * 60 or 60
+                if self.timer.state == "running" and self.timer.remaining_s > warn_s + 20:
+                    self.timer.remaining_s = warn_s + 20
+            elif kind == "simulate" and cmd.get("event") == "long_focus":
+                due = self.settings.break_reminder_min * 60 or 50 * 60
+                self.timer.streak_s = max(self.timer.streak_s, due - 20)
+                self.timer.break_due_s = due
             else:
                 log.warning("Ignored command: %r", cmd)
                 return
@@ -206,6 +244,7 @@ class Device:
             "remaining_s": round(t.remaining_s, 1),
             "fraction_remaining": round(t.remaining_s / t.duration_s, 4) if t.duration_s else 0,
             "time_scale": t.time_scale,
+            "focus_streak_s": round(t.streak_s),
             "settings": asdict(self.settings),
             "ts": time.time(),
         }, retain=True)
@@ -215,7 +254,8 @@ class Device:
         for event in self.analyzer.update(db, now):
             self.gatekeeper.submit(event, now)
         for event in self.timer.tick(dt, self.settings):
-            self.gatekeeper.submit(event, now, minutes=self.settings.transition_warning_min)
+            self.gatekeeper.submit(event, now, minutes=self.settings.transition_warning_min,
+                                   focus_min=round(self.timer.streak_s / 60))
         self.publish("focus/noise", {
             "db": db,
             "avg_db": round(self.analyzer.avg, 1),

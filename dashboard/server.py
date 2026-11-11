@@ -40,8 +40,9 @@ ALLOWED_COMMANDS = {
     "pause": set(),
     "resume": set(),
     "stop": set(),
+    "snooze_break": set(),
     "settings": {"noise_threshold_db", "noise_sustain_s", "noise_alerts",
-                 "alert_cooldown_s", "transition_warning_min"},
+                 "alert_cooldown_s", "transition_warning_min", "break_reminder_min"},
     "simulate": {"event", "seconds"},
 }
 MAX_BODY = 2048

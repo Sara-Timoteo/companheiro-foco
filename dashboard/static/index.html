@@ -123,6 +123,14 @@
           <option value="900">15 minutes</option>
         </select>
 
+        <label for="break">Body break reminder</label>
+        <select id="break">
+          <option value="0">Off</option>
+          <option value="30">After 30 minutes of focus in a row</option>
+          <option value="50" selected>After 50 minutes of focus in a row</option>
+          <option value="90">After 90 minutes of focus in a row</option>
+        </select>
+
         <div class="check">
           <input type="checkbox" id="noise-alerts" checked>
           <label for="noise-alerts">Noise cues on</label>
@@ -166,8 +174,14 @@
 
     <details class="card demo-tools">
       <summary>Demo tools (simulation)</summary>
-      <p class="hint">The noise sensor is simulated in this prototype.</p>
-      <button type="button" id="btn-spike">Simulate a noisy neighbour (30 s)</button>
+      <p class="hint">The noise sensor and these events are simulated in this prototype.</p>
+      <div class="buttons demo-buttons">
+        <button type="button" id="btn-spike">Noisy neighbour (30 s)</button>
+        <button type="button" id="btn-slam">Door slam (no cue, on purpose)</button>
+        <button type="button" id="btn-skip">Jump to the transition cue</button>
+        <button type="button" id="btn-long">Simulate 50 min of focus in a row</button>
+      </div>
+      <p class="hint">Start a focus block first for the last two.</p>
     </details>
   </main>
 
