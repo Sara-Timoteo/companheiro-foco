@@ -296,11 +296,13 @@ saveRecord();
 
 // view and sound preferences (only how the page looks, kept in this browser)
 const PREFS_KEY = "focus-companion.prefs";
-let prefs = { view: "standard", sound: "off" };
+let prefs = { view: "standard", sound: "off", theme: "auto" };
 try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY)) }; } catch { /* defaults */ }
 
 function applyPrefs() {
   document.body.dataset.view = prefs.view;
+  document.documentElement.dataset.theme = prefs.theme;
+  $("theme").value = prefs.theme;
   const radio = document.querySelector(`input[name="view"][value="${prefs.view}"]`);
   if (radio) radio.checked = true;
   $("sound").value = prefs.sound;
@@ -314,6 +316,7 @@ $("sound").addEventListener("change", (e) => {
   if (prefs.sound === "chime") chime("transition");
   if (prefs.sound === "voice") speak("Cues will be read aloud.");
 });
+$("theme").addEventListener("change", (e) => { prefs.theme = e.target.value; applyPrefs(); drawSpark(); });
 $("btn-read").addEventListener("click", () => speak(statusText()));
 applyPrefs();
 
