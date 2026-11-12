@@ -45,14 +45,19 @@ services:
     container_name: focus-dashboard
     depends_on: [mosquitto]
     ports:
-      - "127.0.0.1:${DASHBOARD_PORT:-8088}:8080"                       # localhost only
+      - "127.0.0.1:${DASHBOARD_PORT:-8443}:8443"                       # localhost only
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "8883"
+      HTTP_PORT: "8443"
+      WEB_CERT: /certs/web.crt
+      WEB_KEY: /certs/web.key
     volumes:
       - ./certs/out/ca.crt:/certs/ca.crt:ro
       - ./certs/out/dashboard.crt:/certs/client.crt:ro
       - ./certs/out/dashboard.key:/certs/client.key:ro
+      - ./certs/out/web.crt:/certs/web.crt:ro
+      - ./certs/out/web.key:/certs/web.key:ro
 
 networks:
   focus-net:

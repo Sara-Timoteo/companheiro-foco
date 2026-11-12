@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import queue
+import ssl
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -210,7 +211,17 @@ def main():
     http_port = int(os.getenv("HTTP_PORT", "8080"))
     server = ThreadingHTTPServer(("0.0.0.0", http_port), Handler)
     server.daemon_threads = True
-    log.info("Dashboard on http://localhost:%s", http_port)
+    scheme = "http"
+    cert, key = os.getenv("WEB_CERT"), os.getenv("WEB_KEY")
+    if cert and key and os.path.exists(cert):
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(cert, key)
+        # handshake in the request thread, so a slow client cannot block new connections
+        server.socket = ctx.wrap_socket(server.socket, server_side=True,
+                                        do_handshake_on_connect=False)
+        scheme = "https"
+    log.info("Dashboard on %s://localhost:%s", scheme, http_port)
     server.serve_forever()
 
 

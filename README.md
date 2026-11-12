@@ -37,11 +37,12 @@ Needs Docker Engine with Compose v2 (Linux or WSL2) and OpenSSL.
 git clone https://github.com/Sara-Timoteo/companheiro-foco.git
 cd companheiro-foco
 ./certs/gen-certs.sh        # private CA, server and client certificates in certs/out (git-ignored)
+./certs/gen-web-cert.sh     # localhost-only CA and the dashboard's HTTPS certificate
 printf 'HOST_UID=%s\nHOST_GID=%s\nTIME_SCALE=10\n' "$(id -u)" "$(id -g)" > .env
 docker compose up -d --build
 ```
 
-Open http://localhost:8088, start a block, and try the "Demo tools" panel.
+Open https://localhost:8443, start a block, and try the "Demo tools" panel.
 
 ## Tests
 
@@ -52,7 +53,19 @@ Open http://localhost:8088, start a block, and try the "Demo tools" panel.
 
 - `HOST_UID`, `HOST_GID`: user the containers run as. It must own `certs/out`.
 - `TIME_SCALE`: `1` for real time, `10` for demos.
-- `DASHBOARD_PORT`: dashboard port on localhost, `8088` by default.
+- `DASHBOARD_PORT`: dashboard port on localhost, `8443` by default. Change it if that port is taken on your machine.
+
+## HTTPS without browser warnings
+
+`gen-web-cert.sh` creates a second CA that can only sign certificates for `localhost` and `127.0.0.1`
+(X.509 name constraints), so trusting it cannot be abused for any other site. On Windows, copy
+`certs/out/web-ca.crt` to Downloads and run in PowerShell:
+
+```powershell
+certutil -user -addstore Root $env:USERPROFILE\Downloads\web-ca.crt
+```
+
+Remove it with `certutil -user -delstore Root "Focus Companion localhost-only CA"`.
 
 ## Layout
 
@@ -68,6 +81,7 @@ Open http://localhost:8088, start a block, and try the "Demo tools" panel.
 - No audio is recorded. Only sound levels in dB leave the sensor.
 - Broker: mutual TLS only, no anonymous clients, ACL per identity, nothing stored on disk.
 - Containers: non-root, read-only filesystem, no Linux capabilities, `no-new-privileges`, ports bound to 127.0.0.1.
+- Browser link: HTTPS (TLS 1.2 or newer) with a certificate from a CA that can only sign for localhost.
 - Dashboard: same-origin JSON only, command allow-list, Content Security Policy, no cookies.
   CSV export escapes cells that a spreadsheet could read as formulas.
 

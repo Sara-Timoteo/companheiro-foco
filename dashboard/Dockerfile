@@ -7,5 +7,5 @@ COPY server.py .
 COPY static/ static/
 # compose runs it as the host user so it can read its key
 USER 10001
-EXPOSE 8080
+EXPOSE 8443
 CMD ["python", "server.py"]
