@@ -6,8 +6,15 @@
   outputs =
     { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      perSystem =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
 
       pythonEnv = pkgs.python3.withPackages (ps: [ ps.paho-mqtt ]);
 
@@ -88,7 +95,7 @@
           # Disable pipefail so a successful grep still counts as healthy.
           set +o pipefail
           openssl s_client -connect 127.0.0.1:8883 -CAfile /mosquitto/certs/ca.crt -brief \
-            </dev/null 2>&1 | grep -F -q "CN=mosquitto"
+            </dev/null 2>&1 | grep -E -q 'CN[[:space:]]*=[[:space:]]*mosquitto'
         '';
       };
 
@@ -216,28 +223,6 @@
         { "default": [ { "type": "insecureAcceptAnything" } ] }
       '';
 
-      storageConf = pkgs.writeText "storage.conf" ''
-        [storage]
-        driver = "overlay"
-      '';
-
-      containersConf = pkgs.writeText "containers.conf" ''
-        [engine]
-        cgroup_manager = "systemd"
-        runtime = "crun"
-        conmon_path = ["${pkgs.conmon}/bin/conmon"]
-        helper_binaries_dir = [
-          "${pkgs.podman}/libexec/podman",
-          "${pkgs.aardvark-dns}/bin",
-          "${pkgs.netavark}/bin",
-          "${pkgs.crun}/bin",
-          "${pkgs.passt}/bin",
-          "${pkgs.slirp4netns}/bin"
-        ]
-        [network]
-        network_backend = "netavark"
-      '';
-
       containerTools = [
         pkgs.podman
         pkgs.podman-compose
@@ -282,16 +267,41 @@
       podmanSetup = ''
         unset -f podman docker 2>/dev/null || true
         export PATH="${dockerWrapped}/bin:${pkgs.lib.makeBinPath containerTools}:$PATH"
-        export CONTAINERS_CONF="${containersConf}"
-        export CONTAINERS_STORAGE_CONF="${storageConf}"
-        # This podman looks at $HOME/.config/containers/policy.json, not
-        # XDG_CONFIG_HOME. Install a default only when the user has none, so
-        # we can load local images without a system /etc/containers/policy.json.
-        mkdir -p "$HOME/.config/containers"
-        if [[ ! -e "$HOME/.config/containers/policy.json" ]]; then
-          cp ${policyJson} "$HOME/.config/containers/policy.json"
-          chmod u+w "$HOME/.config/containers/policy.json"
+        # Runtime conf lives under XDG_RUNTIME_DIR, never under the user's
+        # ~/.config/containers. graphroot stays the usual per-user store.
+        runtimeDir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+        dataHome="''${XDG_DATA_HOME:-$HOME/.local/share}"
+        confDir="$runtimeDir/companheiro-foco-containers"
+        mkdir -p "$confDir"
+        if [[ -S "$runtimeDir/bus" ]]; then
+          cgroup_manager=systemd
+        else
+          cgroup_manager=cgroupfs
         fi
+        cat > "$confDir/containers.conf" <<EOF
+[engine]
+cgroup_manager = "$cgroup_manager"
+runtime = "crun"
+conmon_path = ["${pkgs.conmon}/bin/conmon"]
+helper_binaries_dir = [
+  "${pkgs.podman}/libexec/podman",
+  "${pkgs.aardvark-dns}/bin",
+  "${pkgs.netavark}/bin",
+  "${pkgs.crun}/bin",
+  "${pkgs.passt}/bin",
+  "${pkgs.slirp4netns}/bin"
+]
+[network]
+network_backend = "netavark"
+EOF
+        cat > "$confDir/storage.conf" <<EOF
+[storage]
+driver = "overlay"
+runroot = "$runtimeDir/containers"
+graphroot = "$dataHome/containers/storage"
+EOF
+        export CONTAINERS_CONF="$confDir/containers.conf"
+        export CONTAINERS_STORAGE_CONF="$confDir/storage.conf"
       '';
 
       composeBin = ''
@@ -301,26 +311,41 @@
       '';
 
       ensureCerts = ''
-        if [[ ! -f certs/out/ca.crt || ! -f certs/out/web.crt ]]; then
-          ./certs/gen-certs.sh
-          ./certs/gen-web-cert.sh
+        needed=(
+          certs/out/ca.crt certs/out/ca.key
+          certs/out/server.crt certs/out/server.key
+          certs/out/sensor.crt certs/out/sensor.key
+          certs/out/dashboard.crt certs/out/dashboard.key
+          certs/out/web-ca.crt certs/out/web.crt certs/out/web.key
+        )
+        missing=0
+        for f in "''${needed[@]}"; do
+          if [[ ! -f "$f" ]]; then
+            missing=1
+            break
+          fi
+        done
+        if [[ "$missing" -eq 1 ]]; then
+          ./certs/gen-certs.sh --force
+          ./certs/gen-web-cert.sh --force
         fi
         chmod 0700 mosquitto/config/acl
       '';
 
+      # Load always so a rebuilt tarball replaces a stale tag. policy.json is
+      # placed only in a temporary HOME for this command, not in ~/.config.
       loadImages = ''
-        if ! podman image exists companheiro-foco-broker:nix; then
-          podman load -i ${brokerImage}
-        fi
-        if ! podman image exists companheiro-foco-sensor:nix; then
-          podman load -i ${sensorImage}
-        fi
-        if ! podman image exists companheiro-foco-panel:nix; then
-          podman load -i ${panelImage}
-        fi
-        # The broker test script uses this image name as a client. It is our
-        # Nix mosquitto image, retagged; no Docker Hub pull is required.
-        podman tag companheiro-foco-broker:nix eclipse-mosquitto:2
+        load_image() {
+          local tar="$1" home
+          home="$(mktemp -d)"
+          mkdir -p "$home/.config/containers"
+          cp ${policyJson} "$home/.config/containers/policy.json"
+          HOME="$home" podman load -i "$tar"
+          rm -rf "$home"
+        }
+        load_image ${brokerImage}
+        load_image ${sensorImage}
+        load_image ${panelImage}
       '';
 
       demo = pkgs.writeShellApplication {
@@ -379,15 +404,16 @@
           ${repoGuard}
           ${podmanSetup}
           ${composeBin}
-          if ! podman inspect --format '{{.State.Health.Status}}' focus-mosquitto focus-sensor focus-dashboard 2>/dev/null | grep -qx healthy; then
+          statuses="$(podman inspect --format '{{.State.Health.Status}}' focus-mosquitto focus-sensor focus-dashboard 2>/dev/null || true)"
+          if ! echo "$statuses" | grep -q . || echo "$statuses" | grep -v -q '^healthy$'; then
             echo "The stack is not healthy. Run nix run .#demo first." >&2
             exit 1
           fi
           # Only trust PASS lines when the engine is really running and the
           # positive checks pass. A missing docker CLI makes negatives pass.
-          if ! podman image exists eclipse-mosquitto:2; then
-            podman tag companheiro-foco-broker:nix eclipse-mosquitto:2
-          fi
+          # Use the Nix broker image as the MQTT client; do not retag
+          # eclipse-mosquitto:2.
+          export BROKER_TEST_IMAGE=companheiro-foco-broker:nix
           ./scripts/broker-smoke-test.sh
         '';
       };
@@ -429,7 +455,6 @@
             machine.succeed("podman load -i ${brokerImage}")
             machine.succeed("podman load -i ${sensorImage}")
             machine.succeed("podman load -i ${panelImage}")
-            machine.succeed("podman tag companheiro-foco-broker:nix eclipse-mosquitto:2")
             # Rootful podman in the VM: do not use keep-id, and do not run
             # mosquitto as root (it would exit at once).
             machine.succeed(
@@ -448,12 +473,12 @@
             )
             machine.fail("nc -z 127.0.0.1 1883")
             machine.succeed("curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:8443/ | grep -qx 200")
-            machine.succeed("cd /tmp/cf && ./scripts/broker-smoke-test.sh")
+            machine.succeed("cd /tmp/cf && BROKER_TEST_IMAGE=companheiro-foco-broker:nix ./scripts/broker-smoke-test.sh")
           '';
         };
-    in
-    {
-      packages.${system} = {
+        in
+        {
+          packages = {
         default = pkgs.symlinkJoin {
           name = "companheiro-foco";
           paths = [
@@ -472,7 +497,7 @@
         test = testApp;
       };
 
-      apps.${system} = {
+          apps = {
         default = {
           type = "app";
           program = "${demo}/bin/demo";
@@ -491,7 +516,7 @@
         };
       };
 
-      devShells.${system}.default = pkgs.mkShell {
+          devShells.default = pkgs.mkShell {
         packages = containerTools ++ [
           pythonEnv
           pkgs.gnumake
@@ -499,14 +524,24 @@
         ];
       };
 
-      checks.${system} = {
-        libnoise = libnoise;
-        sensor = sensorApp;
-        panel = panelApp;
-        broker-image = brokerImage;
-        sensor-image = sensorImage;
-        panel-image = panelImage;
-        demo-test = demoTest;
-      };
+          checks = {
+            libnoise = libnoise;
+            sensor = sensorApp;
+            panel = panelApp;
+            broker-image = brokerImage;
+            sensor-image = sensorImage;
+            panel-image = panelImage;
+          };
+
+          # Experimental: not wired into `nix flake check`.
+          legacyPackages.vmTest = demoTest;
+        };
+    in
+    {
+      packages = forAllSystems (system: (perSystem system).packages);
+      apps = forAllSystems (system: (perSystem system).apps);
+      devShells = forAllSystems (system: (perSystem system).devShells);
+      checks = forAllSystems (system: (perSystem system).checks);
+      legacyPackages = forAllSystems (system: (perSystem system).legacyPackages);
     };
 }

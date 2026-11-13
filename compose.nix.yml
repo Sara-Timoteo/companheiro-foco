@@ -60,7 +60,8 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "8883"
-      TIME_SCALE: "${TIME_SCALE:-1}"
+      # 10 for a short demo; set TIME_SCALE in the environment or .env to override.
+      TIME_SCALE: "${TIME_SCALE:-10}"
       NOISE_LIB: /app/libnoise_analyzer.so
     tmpfs:
       - /tmp:mode=01777
