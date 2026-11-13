@@ -39,10 +39,28 @@ cd companheiro-foco
 ./certs/gen-certs.sh        # private CA, server and client certificates in certs/out (git-ignored)
 ./certs/gen-web-cert.sh     # localhost-only CA and the dashboard's HTTPS certificate
 printf 'HOST_UID=%s\nHOST_GID=%s\nTIME_SCALE=10\n' "$(id -u)" "$(id -g)" > .env
+chmod 0700 mosquitto/config/acl
 docker compose up -d --build
 ```
 
 Open https://localhost:8443, start a block, and try the "Demo tools" panel.
+
+Alternatively, on Linux (x86_64 or aarch64), there is a Nix flake path. Docker Compose remains the primary way to run the stack, and is the path to use on macOS: the flake does not support macOS.
+
+```bash
+chmod 0700 mosquitto/config/acl
+nix run .#demo      # build images, issue certs if needed, start the stack
+# Open https://localhost:8443
+nix run .#test      # broker test, 4 checks, about 30 s (needs the stack up)
+nix run .#demo-down
+```
+
+`nix run .#demo` uses Podman and the Nix-built images in `compose.nix.yml`. It defaults `TIME_SCALE` to 10 unless `.env` or the environment already sets it. It does not replace `docker compose`. If you use direnv, `direnv allow` loads the flake devShell (Python, make, gcc, and the same container tools).
+
+`compose.nix.yml` uses tmpfs with `mode=01777` only: rootless Podman rejects the `uid=`/`gid=` options that `docker-compose.yml` keeps.
+
+The optional NixOS VM test is experimental and is not part of `nix flake check`. On Linux you can try `nix build .#legacyPackages.$(nix eval --raw --impure --expr builtins.currentSystem).vmTest`.
+
 
 ## Tests
 

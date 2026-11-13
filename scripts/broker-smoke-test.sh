@@ -3,7 +3,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-IMG=eclipse-mosquitto:2
+IMG="${BROKER_TEST_IMAGE:-eclipse-mosquitto:2}"
 CERTS="$PWD/certs/out"
 pass=0; fail=0
 

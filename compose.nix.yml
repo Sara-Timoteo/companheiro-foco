@@ -1,0 +1,134 @@
+name: companheiro-foco
+
+# Nix-built images, same hardening as docker-compose.yml. Used by
+# `nix run .#demo`. The Dockerfile compose path is unchanged.
+x-hardening: &hardening
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+  # Rootless podman otherwise maps 1000 to a subuid, so 0700 ACL/certs are unreadable.
+  userns_mode: keep-id
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "1m"
+      max-file: "3"
+
+services:
+  mosquitto:
+    <<: *hardening
+    image: companheiro-foco-broker:nix
+    pull_policy: never
+    container_name: focus-mosquitto
+    ports:
+      - "127.0.0.1:8883:8883"
+    # mode only: podman rejects uid=/gid= on tmpfs (docker-compose.yml keeps them).
+    tmpfs:
+      - /tmp:mode=01777
+      - /mosquitto/data:mode=01777
+      - /mosquitto/log:mode=01777
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - ./certs/out/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./certs/out/server.crt:/mosquitto/certs/server.crt:ro
+      - ./certs/out/server.key:/mosquitto/certs/server.key:ro
+    networks:
+      - backend
+      - frontend
+    # The Nix broker image includes openssl, so this can check that 8883
+    # presents the mosquitto server certificate. It is not a full mTLS login.
+    healthcheck:
+      test: ["CMD", "/bin/health-8883"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    mem_limit: 64m
+    cpus: "0.25"
+    pids_limit: 64
+
+  sensor:
+    <<: *hardening
+    image: companheiro-foco-sensor:nix
+    pull_policy: never
+    container_name: focus-sensor
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "8883"
+      # 10 for a short demo; set TIME_SCALE in the environment or .env to override.
+      TIME_SCALE: "${TIME_SCALE:-10}"
+      NOISE_LIB: /app/libnoise_analyzer.so
+    tmpfs:
+      - /tmp:mode=01777
+    volumes:
+      - ./certs/out/ca.crt:/certs/ca.crt:ro
+      - ./certs/out/sensor.crt:/certs/client.crt:ro
+      - ./certs/out/sensor.key:/certs/client.key:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "kill", "-0", "1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    mem_limit: 128m
+    cpus: "0.50"
+    pids_limit: 64
+
+  dashboard:
+    <<: *hardening
+    image: companheiro-foco-panel:nix
+    pull_policy: never
+    container_name: focus-dashboard
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8443}:8443"
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "8883"
+      HTTP_PORT: "8443"
+      WEB_CERT: /certs/web.crt
+      WEB_KEY: /certs/web.key
+    tmpfs:
+      - /tmp:mode=01777
+    volumes:
+      - ./certs/out/ca.crt:/certs/ca.crt:ro
+      - ./certs/out/dashboard.crt:/certs/client.crt:ro
+      - ./certs/out/dashboard.key:/certs/client.key:ro
+      - ./certs/out/web.crt:/certs/web.crt:ro
+      - ./certs/out/web.key:/certs/web.key:ro
+    networks:
+      - frontend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import ssl,urllib.request; c=ssl._create_unverified_context(); urllib.request.urlopen('https://127.0.0.1:8443/', context=c, timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    mem_limit: 128m
+    cpus: "0.50"
+    pids_limit: 64
+
+# backend is internal: the sensor has no internet egress; it shares
+# focus-backend only with the broker.
+# only mosquitto and dashboard publish host ports; both attach to frontend (focus-net).
+networks:
+  backend:
+    name: focus-backend
+    internal: true
+  frontend:
+    name: focus-net
