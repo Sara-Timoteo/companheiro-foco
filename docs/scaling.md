@@ -22,8 +22,10 @@ At a larger site, issue a distinct client certificate for every
 physical device and every dashboard instance, still from the site's
 own CA. The CA key stays on the site, off the devices, the same way
 `certs/out/ca.key` never enters a container today. Lost or replaced
-hardware means revoking that one certificate, not rotating a shared
-password.
+hardware does not revoke that certificate today: there is no crlfile
+or OCSP, so a stolen cert stays valid until it expires (90 days)
+unless a CRL is added and crlfile is set. Rotating a shared password
+is still avoided, because each device has its own certificate.
 
 ## ACL per room
 
