@@ -16,3 +16,8 @@ __pycache__/
 # C build output
 firmware/common/libnoise_analyzer.so
 firmware/common/tests/test_noise_analyzer
+
+# Nix
+result
+result-*
+.direnv/

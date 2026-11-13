@@ -39,10 +39,24 @@ cd companheiro-foco
 ./certs/gen-certs.sh        # private CA, server and client certificates in certs/out (git-ignored)
 ./certs/gen-web-cert.sh     # localhost-only CA and the dashboard's HTTPS certificate
 printf 'HOST_UID=%s\nHOST_GID=%s\nTIME_SCALE=10\n' "$(id -u)" "$(id -g)" > .env
+chmod 0700 mosquitto/config/acl
 docker compose up -d --build
 ```
 
 Open https://localhost:8443, start a block, and try the "Demo tools" panel.
+
+Alternatively, with Nix flakes (the Docker Compose path above is unchanged):
+
+```bash
+chmod 0700 mosquitto/config/acl
+nix run .#demo      # build images, issue certs if needed, start the stack
+# Open https://localhost:8443
+nix run .#test      # broker test, 4 checks, about 30 s (needs the stack up)
+nix run .#demo-down
+```
+
+`nix run .#demo` uses Podman and the Nix-built images in `compose.nix.yml`. It does not replace `docker compose`. If you use direnv, `direnv allow` loads the flake devShell (Python, make, gcc, and the same container tools).
+
 
 ## Tests
 
