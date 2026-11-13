@@ -27,7 +27,7 @@ check() {
 delivered() {
   local pub=$1 sub=$2 topic=$3 msg="smoke-$RANDOM" out
   out=$(mktemp)
-  mqtt "$sub" mosquitto_sub -t "$topic" -C 1 -W 8 > "$out" 2>/dev/null &
+  mqtt "$sub" mosquitto_sub -t "$topic" -W 8 > "$out" 2>/dev/null &
   local pid=$!
   sleep 3
   mqtt "$pub" mosquitto_pub -t "$topic" -m "$msg" -q 1 >/dev/null 2>&1
