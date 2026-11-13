@@ -6,7 +6,7 @@ Wireshark capture of the running stack. It does not change that design.
 
 ## System and trust boundaries
 
-Three containers on one machine, on a private Docker network. Diogo's
+Three containers on one machine, on two Docker networks: `focus-backend` (internal) and `focus-net` (for published services). Diogo's
 capture saw three hosts on `172.18.0.x` (the Compose bridge), TLS
 records of about 128 and 364 bytes, and a keepalive every 30 seconds.
 That matches the MQTT keepalive set by the sensor and the dashboard.
@@ -40,12 +40,12 @@ path must keep the same rule: only a dB value leaves the device.
 | Broker | **R** Repudiation: no proof of who published a value | The connection presents a certificate whose CN becomes the username. There is no signed application audit log | Accepted residual for the hackathon |
 | Broker | **I** Information disclosure: plaintext MQTT, payload logs, extra ports, leaked keys | No 1883 listener; no `log_type debug` or `all`; 8883 bound to loopback; CA key kept out of the container; keys not committed; each container mounts only its own key | Done in Sara's design |
 | Broker | **D** Denial of service: flood the listener from the host or internet | Loopback bind; this change adds CPU, memory and PID limits. No MQTT-layer rate limit | Exposure is already limited; rate limit is a residual |
-| Broker | **E** Elevation of privilege: publish or subscribe beyond role, or break out of the container | ACL per identity; non-root; `cap_drop: [ALL]`; read-only root; `no-new-privileges`. This change pins the image digest, adds tmpfs and an internal backend network for the sensor | Done, with compose gaps closed here |
+| Broker | **E** Elevation of privilege: publish or subscribe beyond role, or break out of the container | ACL per identity; non-root; `cap_drop: [ALL]`; read-only root; `no-new-privileges`. This change pins the image digest, adds tmpfs and cgroup limits, and puts the sensor only on the internal network | Done: digest pins, tmpfs, cgroup limits, sensor only on the internal network |
 | Sensor | **S** Spoofing: impersonate the sensor | Client certificate `CN=sensor` required by the broker | Done |
 | Sensor | **T** Tampering: alter published values in transit | Covered by broker TLS (see Diogo's capture) | Done for transit |
 | Sensor | **I** Information disclosure: raw audio, identifiers, extra mounted secrets | Publishes an aggregate dB value, timer and cue events; no audio; no device id; mounts `ca.crt`, `sensor.crt` and `sensor.key` only | Done. A real microphone path must keep this rule |
 | Sensor | **D** Denial of service: publish in a tight loop | Interval publish, gatekeeper cooldowns, and container resource limits added here | Done |
-| Sensor | **E** Elevation of privilege: write `focus/control`, or reach the host | ACL denies the sensor write access to `focus/control`; the sensor sits only on the internal backend network | Done |
+| Sensor | **E** Elevation of privilege: write `focus/control`, or reach the host | ACL denies the sensor write access to `focus/control`; the sensor has no internet egress and shares `focus-backend` with the broker and the dashboard | Done |
 | Dashboard | **S** Spoofing: impersonate the dashboard, or a browser that pretends to be a broker client | Dashboard client certificate `CN=dashboard`. The browser talks HTTPS to the dashboard only | Done |
 | Dashboard | **T** Tampering: change values shown to the user, or inject script | Transit from the broker is TLS. The page sends same-origin JSON, uses a command allow-list, and a Content Security Policy | Done in Sara's design |
 | Dashboard | **I** Information disclosure: UI reachable beyond this machine, or broker opened to the browser | Bind `127.0.0.1:8443`; HTTPS with a localhost-only CA; browser has no MQTT credentials | Done in Sara's design |
