@@ -1,26 +1,51 @@
 name: companheiro-foco
 
 # Hardening applied to every service: non-root, read-only FS, no Linux capabilities.
+# Image pins are Docker Hub index digests checked on 12 Nov 2026 (Europe/Lisbon).
 x-hardening: &hardening
   user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
   read_only: true
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
   restart: unless-stopped
-  networks: [focus-net]
+  logging:
+    driver: json-file
+    options:
+      max-size: "1m"
+      max-file: "3"
 
 services:
   mosquitto:
     <<: *hardening
-    image: eclipse-mosquitto:2
+    image: eclipse-mosquitto:2.0.22@sha256:81a6193ae693942a3231cd3ac52875b02b7e3a19da671b2fb4b55cc874c5b279
     container_name: focus-mosquitto
     ports:
       - "127.0.0.1:8883:8883"                       # localhost only
+    tmpfs:
+      - /tmp:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=01777
+      - /mosquitto/data:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=0755
+      - /mosquitto/log:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=0755
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
       - ./certs/out/ca.crt:/mosquitto/certs/ca.crt:ro
       - ./certs/out/server.crt:/mosquitto/certs/server.crt:ro
       - ./certs/out/server.key:/mosquitto/certs/server.key:ro
+    networks:
+      - backend
+      - frontend
+    # The image has no openssl, and a TLS probe of 8883 would need a client
+    # certificate (the broker requires mutual TLS). Adding a health identity
+    # would change the cert scripts and the ACL. This check only confirms
+    # the process is still running.
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    mem_limit: 64m
+    cpus: "0.25"
+    pids_limit: 64
 
   sensor:
     <<: *hardening
@@ -29,21 +54,38 @@ services:
       additional_contexts:
         firmware: ./firmware                         # C noise analyzer, compiled and tested in the image
     container_name: focus-sensor
-    depends_on: [mosquitto]
+    depends_on:
+      mosquitto:
+        condition: service_healthy
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "8883"
       TIME_SCALE: "${TIME_SCALE:-1}"                 # >1 only for demos
+    tmpfs:
+      - /tmp:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=01777
     volumes:                                         # only its own identity
       - ./certs/out/ca.crt:/certs/ca.crt:ro
       - ./certs/out/sensor.crt:/certs/client.crt:ro
       - ./certs/out/sensor.key:/certs/client.key:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    mem_limit: 128m
+    cpus: "0.50"
+    pids_limit: 64
 
   dashboard:
     <<: *hardening
     build: ./dashboard
     container_name: focus-dashboard
-    depends_on: [mosquitto]
+    depends_on:
+      mosquitto:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-8443}:8443"                       # localhost only
     environment:
@@ -52,13 +94,38 @@ services:
       HTTP_PORT: "8443"
       WEB_CERT: /certs/web.crt
       WEB_KEY: /certs/web.key
+    tmpfs:
+      - /tmp:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=01777
     volumes:
       - ./certs/out/ca.crt:/certs/ca.crt:ro
       - ./certs/out/dashboard.crt:/certs/client.crt:ro
       - ./certs/out/dashboard.key:/certs/client.key:ro
       - ./certs/out/web.crt:/certs/web.crt:ro
       - ./certs/out/web.key:/certs/web.key:ro
+    networks:
+      - frontend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import ssl,urllib.request; c=ssl._create_unverified_context(); urllib.request.urlopen('https://127.0.0.1:8443/', context=c, timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    mem_limit: 128m
+    cpus: "0.50"
+    pids_limit: 64
 
+# backend is internal: the sensor has no internet egress; it shares
+# focus-backend only with the broker.
+# only mosquitto and dashboard publish host ports; both attach to frontend (focus-net).
 networks:
-  focus-net:
+  backend:
+    name: focus-backend
+    internal: true
+  frontend:
     name: focus-net

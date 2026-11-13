@@ -75,6 +75,8 @@ Remove it with `certutil -user -delstore Root "Focus Companion localhost-only CA
 - `dashboard/`: web backend (server-sent events + control API) and the accessible UI
 - `certs/`: script that creates the CA and certificates
 - `scripts/`: broker smoke test
+- `docs/STRIDE.md`: one-page threat model, building on the current design and traffic capture
+- `docs/scaling.md`: how the same local design could grow to a school or support centre
 
 ## Privacy and security
 
