@@ -103,7 +103,6 @@ services:
       - ./certs/out/web.crt:/certs/web.crt:ro
       - ./certs/out/web.key:/certs/web.key:ro
     networks:
-      - backend
       - frontend
     healthcheck:
       test:
@@ -122,7 +121,7 @@ services:
     pids_limit: 64
 
 # backend is internal: the sensor has no internet egress; it shares
-# focus-backend with the broker and the dashboard.
+# focus-backend only with the broker.
 # only mosquitto and dashboard publish host ports; both attach to frontend (focus-net).
 networks:
   backend:
