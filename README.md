@@ -105,6 +105,22 @@ Remove it with `certutil -user -delstore Root "Focus Companion localhost-only CA
 - Dashboard: same-origin JSON only, command allow-list, Content Security Policy, no cookies.
   CSV export escapes cells that a spreadsheet could read as formulas.
 
+  ## Demo video
+
+[Watch every user journey on YouTube](https://youtu.be/eAv8HrTGjKU) (1 min 55 s, recorded by Guilherme Fontes). The prototype runs on the real dashboard with the demo clock 10 times faster.
+
+| # | Journey | What you see |
+| --- | --- | --- |
+| 1 | Start a focus block | Name the task, pick 25 minutes, start; the light drains; pause and resume |
+| 2 | Transition cue | 5 minutes before the end, a calm cue suggests a stopping point |
+| 3 | Body break | After long focus it suggests water or a stretch; "Later" asks again in 10 minutes |
+| 4 | A door slams | The sound level spikes, but no cue: one bang does not break focus |
+| 5 | The room stays loud | Noise above the limit for several seconds brings one gentle cue |
+| 6 | Your limits | Set the noise limit, the transition cue and the body-break reminder |
+| 7 | Views that adapt | Calm view, text only, light and dark themes, status read aloud |
+| 8 | Optional focus record | Off by default, kept only in the browser, export to CSV or delete everything |
+| 9 | Security test | Mutual TLS and ACL checks pass 4/4 |
+
 ## Team
 
-Sara Timóteo (code), Diogo (cybersec) and Guilherme (infrastructure and code).
+Sara Timóteo (code), Diogo Anastácio (cybersec wizard) and Guilherme Fontes (infrastructure and code genius).
